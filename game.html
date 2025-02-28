@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TowerHuever Mini App</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(to bottom, #87CEEB, #E0F6FF);
+            overflow: hidden;
+            touch-action: manipulation; /* Отключаем стандартное поведение сенсорных событий */
+        }
+        canvas {
+            border: 1px solid #000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Адаптация под размер экрана
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Константы
+        const BLOCK_SIZE = 50;
+        const GRAVITY = 0.5;
+        const WIND_VARIATION = 10; // Случайный сдвиг из-за "ветра"
+
+        let blocks = [];
+        let fallingBlock = null;
+        let score = 0;
+        let lives = 3;
+        let gameOver = false;
+
+        // Создание нового блока
+        function createBlock() {
+            if (gameOver) return;
+            const lastBlock = blocks[blocks.length - 1] || { x: canvas.width / 2 - BLOCK_SIZE / 2, y: canvas.height - BLOCK_SIZE };
+            fallingBlock = {
+                x: canvas.width / 2 - BLOCK_SIZE / 2,
+                y: 0,
+                vy: 0,
+                width: BLOCK_SIZE,
+                height: BLOCK_SIZE
+            };
+        }
+
+        // Обработка касания
+        let touchStartX = 0;
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // Блокируем скроллинг
+            const touchX = e.touches[0].clientX;
+            if (fallingBlock) {
+                fallingBlock.x = Math.max(0, Math.min(canvas.width - BLOCK_SIZE, fallingBlock.x + (touchX - touchStartX) * 0.5));
+                touchStartX = touchX;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            if (fallingBlock && fallingBlock.vy === 0) {
+                fallingBlock.vy = 5; // Начальная скорость падения
+            }
+        });
+
+        // Обновление игры
+        function update() {
+            if (gameOver) return;
+
+            if (fallingBlock) {
+                fallingBlock.vy += GRAVITY;
+                fallingBlock.y += fallingBlock.vy;
+
+                // Случайный сдвиг из-за "ветра"
+                const wind = (Math.random() - 0.5) * WIND_VARIATION;
+                fallingBlock.x += wind;
+
+                // Проверка столкновения с верхним блоком
+                const lastBlock = blocks[blocks.length - 1] || { x: canvas.width / 2 - BLOCK_SIZE / 2, y: canvas.height - BLOCK_SIZE };
+                if (fallingBlock.y + fallingBlock.height >= lastBlock.y && fallingBlock.y < lastBlock.y + fallingBlock.height) {
+                    const overlapX = Math.min(
+                        Math.abs(fallingBlock.x + fallingBlock.width - lastBlock.x),
+                        Math.abs(fallingBlock.x - (lastBlock.x + lastBlock.width))
+                    );
+                    const isPerfect = overlapX < 5; // Идеальная укладка
+
+                    blocks.push({
+                        x: fallingBlock.x,
+                        y: lastBlock.y - BLOCK_SIZE,
+                        width: BLOCK_SIZE,
+                        height: BLOCK_SIZE
+                    });
+
+                    score += isPerfect ? 20 : Math.max(5 - overlapX, 1); // Очки за укладку
+                    if (isPerfect) score *= 2; // Двойной множитель за идеал
+
+                    // Проверка стабильности
+                    if (overlapX > 15) {
+                        lives--;
+                        if (lives <= 0) gameOver = true;
+                    }
+
+                    fallingBlock = null;
+                    createBlock();
+                }
+
+                if (fallingBlock.y > canvas.height) {
+                    fallingBlock = null;
+                    lives--;
+                    if (lives <= 0) gameOver = true;
+                    createBlock();
+                }
+            }
+
+            if (!fallingBlock && !gameOver) createBlock();
+        }
+
+        // Отрисовка
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Фон города (простая абстракция)
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, canvas.height * 0.6, canvas.width, canvas.height * 0.4);
+            ctx.fillStyle = '#4682B4';
+            for (let i = 0; i < canvas.width / 50; i++) {
+                ctx.fillRect(i * 50, canvas.height * 0.6, 20, canvas.height * 0.4);
+            }
+
+            // Блоки
+            blocks.forEach(block => {
+                ctx.fillStyle = '#ADD8E6';
+                ctx.fillRect(block.x, block.y, block.width, block.height);
+                ctx.strokeStyle = '#000';
+                ctx.strokeRect(block.x, block.y, block.width, block.height);
+            });
+
+            // Падающий блок
+            if (fallingBlock) {
+                ctx.fillStyle = '#ADD8E6';
+                ctx.fillRect(fallingBlock.x, fallingBlock.y, fallingBlock.width, fallingBlock.height);
+                ctx.strokeStyle = '#000';
+                ctx.strokeRect(fallingBlock.x, fallingBlock.y, fallingBlock.width, fallingBlock.height);
+            }
+
+            // Интерфейс
+            ctx.fillStyle = '#000';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Score: ${score}`, 10, 30);
+            ctx.fillText(`Lives: ${lives}`, 10, 60);
+            ctx.fillText(`Height: ${blocks.length * BLOCK_SIZE}px`, 10, 90);
+
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#FFF';
+                ctx.font = '40px Arial';
+                ctx.fillText('Game Over!', canvas.width / 2 - 100, canvas.height / 2);
+                ctx.font = '20px Arial';
+                ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 60, canvas.height / 2 + 40);
+            }
+        }
+
+        // Игровой цикл
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Старт игры
+        gameLoop();
+
+        // Адаптация при изменении размера окна
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+</html>
